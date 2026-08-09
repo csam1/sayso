@@ -1,0 +1,6 @@
+# macOS
+.DS_Store
+
+# Runtime-generated transcripts (personal voice data, not source)
+output/transcripts/
+*.md

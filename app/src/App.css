@@ -1,0 +1,93 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+.overlay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+  background: rgba(28, 28, 30, 0.86);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.overlay:active {
+  cursor: grabbing;
+}
+
+.bars {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 100%;
+}
+
+.bar {
+  width: 3px;
+  min-height: 8px;
+  border-radius: 2px;
+  background: #34d399;
+  transition: height 60ms linear;
+}
+
+.stop-button {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  cursor: pointer;
+  padding: 0;
+}
+
+.stop-button:hover {
+  background: #dc2626;
+}
+
+.stop-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.status-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.stop-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
