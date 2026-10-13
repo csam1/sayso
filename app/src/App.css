@@ -87,6 +87,14 @@ body,
   letter-spacing: 0.02em;
 }
 
+.status-label--error {
+  padding: 0 8px;
+  color: #ffb4a8;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .stop-button:disabled {
   opacity: 0.5;
   cursor: default;

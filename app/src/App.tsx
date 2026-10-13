@@ -9,11 +9,20 @@ const SAMPLE_INTERVAL_MS = 50;
 const IDLE_LEVEL = 0.05;
 const CAPTURE_BUFFER_SIZE = 4096;
 
-type Phase = "recording" | "transcribing";
+type Phase = "recording" | "transcribing" | "mic-blocked";
+
+function micErrorMessage(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+  if (name === "NotFoundError") {
+    return "No microphone found. Connect one and try again.";
+  }
+  return "Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone, then try again.";
+}
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [phase, setPhase] = useState<Phase>("recording");
+  const [micError, setMicError] = useState("");
   const [levels, setLevels] = useState<number[]>(() =>
     new Array(BAR_COUNT).fill(IDLE_LEVEL),
   );
@@ -126,6 +135,10 @@ function App() {
         };
       } catch (error) {
         console.error("Microphone capture failed:", error);
+        if (!cancelled) {
+          setMicError(micErrorMessage(error));
+          setPhase("mic-blocked");
+        }
       }
     })();
 
@@ -144,6 +157,11 @@ function App() {
   const handleStop = async () => {
     if (stoppingRef.current) return;
     stoppingRef.current = true;
+
+    if (phase === "mic-blocked") {
+      await invoke("stop_recording", { transcript: null });
+      return;
+    }
 
     setPhase("transcribing");
     stopCapture();
@@ -186,6 +204,10 @@ function App() {
             />
           ))}
         </div>
+      ) : phase === "mic-blocked" ? (
+        <div className="status-label status-label--error" role="alert">
+          {micError}
+        </div>
       ) : (
         <div className="status-label">Transcribing…</div>
       )}
@@ -194,7 +216,7 @@ function App() {
         className="stop-button"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={handleStop}
-        aria-label="Stop recording"
+        aria-label={phase === "mic-blocked" ? "Close" : "Stop recording"}
         disabled={phase === "transcribing"}
       >
         <span className="stop-icon" />
