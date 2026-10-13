@@ -24,6 +24,8 @@ function App() {
   const intervalRef = useRef<number | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
   const sampleRateRef = useRef(48000);
+  const stoppingRef = useRef(false);
+  const handleStopRef = useRef<() => void>(() => {});
 
   const stopCapture = () => {
     if (intervalRef.current !== null) {
@@ -42,8 +44,19 @@ function App() {
     const unlisten = listen<boolean>("recording-state-changed", (event) => {
       setIsRecording(event.payload);
       if (event.payload) {
+        stoppingRef.current = false;
         setPhase("recording");
       }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen("stop-requested", () => {
+      handleStopRef.current();
     });
 
     return () => {
@@ -129,6 +142,9 @@ function App() {
   };
 
   const handleStop = async () => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+
     setPhase("transcribing");
     stopCapture();
 
@@ -144,17 +160,19 @@ function App() {
     }
     chunksRef.current = [];
 
+    let transcript: string | null = null;
     try {
-      await invoke("transcribe_recording", {
+      transcript = await invoke<string>("transcribe_recording", {
         samples: Array.from(samples),
         sampleRate: sampleRateRef.current,
       });
     } catch (error) {
       console.error("Transcription failed:", error);
     } finally {
-      await invoke("stop_recording");
+      await invoke("stop_recording", { transcript });
     }
   };
+  handleStopRef.current = handleStop;
 
   return (
     <div className="overlay" onPointerDown={handleDragStart}>
