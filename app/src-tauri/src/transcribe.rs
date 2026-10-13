@@ -43,13 +43,13 @@ pub async fn transcribe_recording(
     app: AppHandle,
     samples: Vec<f32>,
     sample_rate: u32,
-) -> Result<(), String> {
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         ensure_model_loaded(&app)?;
 
         let resampled = resample_to_16k(&samples, sample_rate);
         if resampled.is_empty() {
-            return Ok(());
+            return Ok(String::new());
         }
 
         let state = app.state::<WhisperState>();
@@ -86,7 +86,7 @@ pub async fn transcribe_recording(
             write_transcript(trimmed)?;
         }
 
-        Ok(())
+        Ok(trimmed.to_string())
     })
     .await
     .map_err(|e| format!("transcription task panicked: {e}"))?

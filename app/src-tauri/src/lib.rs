@@ -12,6 +12,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
+use paste::PasteTarget;
 use transcribe::{ensure_model_loaded, transcribe_recording, WhisperState};
 
 const OVERLAY_LABEL: &str = "overlay";
@@ -23,21 +24,46 @@ fn toggle_overlay(app: &AppHandle) {
 
     let is_visible = window.is_visible().unwrap_or(false);
     if is_visible {
-        window.hide().ok();
-        app.emit("recording-state-changed", false).ok();
+        // Second press while recording: the frontend owns the audio, so it stops, transcribes and pastes.
+        app.emit("stop-requested", ()).ok();
     } else {
+        remember_paste_target(app);
         window.show().ok();
         window.set_focus().ok();
         app.emit("recording-state-changed", true).ok();
     }
 }
 
+fn remember_paste_target(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        *app.state::<PasteTarget>().0.lock().unwrap() = paste::frontmost_app_pid();
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
+}
+
 #[tauri::command]
-fn stop_recording(app: AppHandle) {
+fn stop_recording(app: AppHandle, transcript: Option<String>) {
     if let Some(window) = app.get_webview_window(OVERLAY_LABEL) {
         window.hide().ok();
     }
     app.emit("recording-state-changed", false).ok();
+
+    let target = app.state::<PasteTarget>().0.lock().unwrap().take();
+    let text = transcript.unwrap_or_default();
+    let Some(pid) = paste::paste_target_for(&text, target, std::process::id() as i32) else {
+        return;
+    };
+
+    #[cfg(target_os = "macos")]
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(e) = paste::paste_into(pid, text.trim()) {
+            eprintln!("paste failed: {e}");
+        }
+    });
+    #[cfg(not(target_os = "macos"))]
+    let _ = pid;
 }
 
 #[cfg(target_os = "macos")]
@@ -84,6 +110,7 @@ pub fn run() {
 
     builder
         .manage(WhisperState::new())
+        .manage(PasteTarget::new())
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
