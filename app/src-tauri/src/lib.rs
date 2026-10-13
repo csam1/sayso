@@ -1,6 +1,7 @@
 mod audio;
 mod model;
 mod output;
+mod paste;
 mod transcribe;
 
 use tauri::{
