@@ -3,6 +3,7 @@ mod model;
 mod output;
 mod paste;
 mod transcribe;
+mod welcome;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -122,8 +123,10 @@ pub fn run() {
 
             let toggle_item =
                 MenuItem::with_id(app, "toggle", "Toggle Recording", true, None::<&str>)?;
+            let welcome_item =
+                MenuItem::with_id(app, "welcome", "How to use Sayso", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&toggle_item, &welcome_item, &quit_item])?;
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -131,10 +134,17 @@ pub fn run() {
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "toggle" => toggle_overlay(app),
+                    "welcome" => welcome::show_welcome(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
                 .build(app)?;
+
+            match app.path().app_data_dir() {
+                Ok(dir) if welcome::should_show_welcome(&dir) => welcome::show_welcome(app.handle()),
+                Ok(_) => {}
+                Err(e) => eprintln!("failed to resolve app data dir: {e}"),
+            }
 
             #[cfg(target_os = "macos")]
             prime_macos_permissions(app.handle());
@@ -158,7 +168,11 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![stop_recording, transcribe_recording])
+        .invoke_handler(tauri::generate_handler![
+            stop_recording,
+            transcribe_recording,
+            welcome::welcome_done
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
