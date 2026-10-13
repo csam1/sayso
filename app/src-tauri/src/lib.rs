@@ -12,7 +12,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
-use paste::PasteTarget;
+use paste::{PasteTarget, StopAction};
 use transcribe::{ensure_model_loaded, transcribe_recording, WhisperState};
 
 const OVERLAY_LABEL: &str = "overlay";
@@ -52,18 +52,21 @@ fn stop_recording(app: AppHandle, transcript: Option<String>) {
 
     let target = app.state::<PasteTarget>().0.lock().unwrap().take();
     let text = transcript.unwrap_or_default();
-    let Some(pid) = paste::paste_target_for(&text, target, std::process::id() as i32) else {
-        return;
-    };
+    let action = paste::stop_action(&text, target, std::process::id() as i32);
 
     #[cfg(target_os = "macos")]
     tauri::async_runtime::spawn_blocking(move || {
-        if let Err(e) = paste::paste_into(pid, text.trim()) {
+        let result = match action {
+            StopAction::Paste(pid) => paste::paste_into(pid, text.trim()),
+            StopAction::Refocus(pid) => paste::activate_app(pid),
+            StopAction::Nothing => Ok(()),
+        };
+        if let Err(e) = result {
             eprintln!("paste failed: {e}");
         }
     });
     #[cfg(not(target_os = "macos"))]
-    let _ = pid;
+    let _ = action;
 }
 
 #[cfg(target_os = "macos")]
