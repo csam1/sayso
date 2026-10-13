@@ -1,0 +1,151 @@
+.welcome {
+  --welcome-bg: #f6f6f8;
+  --welcome-fg: #1c1c1e;
+  --welcome-muted: #6e6e73;
+  --welcome-card: #ffffff;
+  --welcome-border: rgba(0, 0, 0, 0.08);
+  --welcome-accent: #0a84ff;
+  --welcome-ok: #248a3d;
+  --welcome-missing: #d70015;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--welcome-bg);
+  color: var(--welcome-fg);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .welcome {
+    --welcome-bg: #1c1c1e;
+    --welcome-fg: #f2f2f7;
+    --welcome-muted: #98989f;
+    --welcome-card: #2c2c2e;
+    --welcome-border: rgba(255, 255, 255, 0.08);
+    --welcome-ok: #30d158;
+    --welcome-missing: #ff453a;
+  }
+}
+
+.welcome h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.welcome h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--welcome-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--welcome-muted);
+}
+
+.steps,
+.permissions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step,
+.permission {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--welcome-card);
+  border: 1px solid var(--welcome-border);
+  border-radius: 10px;
+}
+
+.step-number {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--welcome-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.step-title,
+.permission-name {
+  font-weight: 600;
+}
+
+.step-body,
+.permission-why {
+  color: var(--welcome-muted);
+}
+
+.permission {
+  justify-content: space-between;
+}
+
+.permission-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.permission-status {
+  white-space: nowrap;
+  color: var(--welcome-muted);
+}
+
+.permission-status--ok {
+  color: var(--welcome-ok);
+}
+
+.permission-status--missing {
+  color: var(--welcome-missing);
+}
+
+.grant-button,
+.done-button {
+  border: none;
+  border-radius: 6px;
+  background: var(--welcome-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.grant-button {
+  padding: 4px 10px;
+}
+
+.done-button {
+  width: 100%;
+  padding: 8px;
+}
+
+.footnote {
+  margin: 8px 0 0;
+  color: var(--welcome-muted);
+  font-size: 11px;
+}
+
+.welcome footer {
+  margin-top: auto;
+}
