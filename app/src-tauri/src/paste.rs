@@ -17,6 +17,81 @@ pub fn paste_target_for(text: &str, target: Option<i32>, own_pid: i32) -> Option
     target.filter(|&pid| pid > 0 && pid != own_pid)
 }
 
+#[cfg(target_os = "macos")]
+mod macos {
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation, KeyCode};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    use objc2_app_kit::{
+        NSApplicationActivationOptions, NSPasteboard, NSPasteboardTypeString,
+        NSRunningApplication, NSWorkspace,
+    };
+    use objc2_foundation::NSString;
+
+    const ACTIVATION_TIMEOUT: Duration = Duration::from_millis(1000);
+    const ACTIVATION_POLL: Duration = Duration::from_millis(20);
+    // Give the re-activated app a moment to restore keyboard focus to its text field.
+    const SETTLE_DELAY: Duration = Duration::from_millis(50);
+
+    pub fn frontmost_app_pid() -> Option<i32> {
+        let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+        let pid = app.processIdentifier();
+        (pid > 0).then_some(pid)
+    }
+
+    pub fn paste_into(pid: i32, text: &str) -> Result<(), String> {
+        set_clipboard(text)?;
+
+        let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
+            .ok_or("target app is no longer running; transcript left on clipboard")?;
+        app.activateWithOptions(NSApplicationActivationOptions::empty());
+        wait_until_frontmost(pid)?;
+        thread::sleep(SETTLE_DELAY);
+
+        send_cmd_v()
+    }
+
+    fn set_clipboard(text: &str) -> Result<(), String> {
+        let pasteboard = NSPasteboard::generalPasteboard();
+        pasteboard.clearContents();
+        let ok = pasteboard
+            .setString_forType(&NSString::from_str(text), unsafe { NSPasteboardTypeString });
+        if ok {
+            Ok(())
+        } else {
+            Err("failed to write transcript to clipboard".into())
+        }
+    }
+
+    fn wait_until_frontmost(pid: i32) -> Result<(), String> {
+        let deadline = Instant::now() + ACTIVATION_TIMEOUT;
+        while Instant::now() < deadline {
+            if frontmost_app_pid() == Some(pid) {
+                return Ok(());
+            }
+            thread::sleep(ACTIVATION_POLL);
+        }
+        Err("target app did not come to the front; transcript left on clipboard".into())
+    }
+
+    fn send_cmd_v() -> Result<(), String> {
+        for keydown in [true, false] {
+            let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+                .map_err(|_| "failed to create keyboard event source")?;
+            let event = CGEvent::new_keyboard_event(source, KeyCode::ANSI_V, keydown)
+                .map_err(|_| "failed to create ⌘V key event")?;
+            event.set_flags(CGEventFlags::CGEventFlagCommand);
+            event.post(CGEventTapLocation::HID);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub use macos::{frontmost_app_pid, paste_into};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,5 +132,31 @@ mod tests {
     #[test]
     fn paste_target_starts_empty() {
         assert_eq!(*PasteTarget::new().0.lock().unwrap(), None);
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    use super::*;
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+
+    fn clipboard_text() -> Option<String> {
+        NSPasteboard::generalPasteboard()
+            .stringForType(unsafe { NSPasteboardTypeString })
+            .map(|s| s.to_string())
+    }
+
+    #[test]
+    fn frontmost_app_pid_is_positive() {
+        let pid = frontmost_app_pid().expect("some app should be frontmost");
+        assert!(pid > 0);
+    }
+
+    #[test]
+    #[ignore = "overwrites the system clipboard; run with `cargo test -- --ignored`"]
+    fn paste_into_missing_app_errors_but_leaves_text_on_clipboard() {
+        let err = paste_into(999_999, "sayso clipboard test").unwrap_err();
+        assert!(err.contains("no longer running"), "unexpected error: {err}");
+        assert_eq!(clipboard_text().as_deref(), Some("sayso clipboard test"));
     }
 }
