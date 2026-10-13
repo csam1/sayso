@@ -9,11 +9,20 @@ const SAMPLE_INTERVAL_MS = 50;
 const IDLE_LEVEL = 0.05;
 const CAPTURE_BUFFER_SIZE = 4096;
 
-type Phase = "recording" | "transcribing";
+type Phase = "recording" | "transcribing" | "mic-blocked";
+
+function micErrorMessage(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+  if (name === "NotFoundError") {
+    return "No microphone found. Connect one and try again.";
+  }
+  return "Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone, then try again.";
+}
 
 function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [phase, setPhase] = useState<Phase>("recording");
+  const [micError, setMicError] = useState("");
   const [levels, setLevels] = useState<number[]>(() =>
     new Array(BAR_COUNT).fill(IDLE_LEVEL),
   );
@@ -24,6 +33,8 @@ function App() {
   const intervalRef = useRef<number | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
   const sampleRateRef = useRef(48000);
+  const stoppingRef = useRef(false);
+  const handleStopRef = useRef<() => void>(() => {});
 
   const stopCapture = () => {
     if (intervalRef.current !== null) {
@@ -42,8 +53,19 @@ function App() {
     const unlisten = listen<boolean>("recording-state-changed", (event) => {
       setIsRecording(event.payload);
       if (event.payload) {
+        stoppingRef.current = false;
         setPhase("recording");
       }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen("stop-requested", () => {
+      handleStopRef.current();
     });
 
     return () => {
@@ -113,6 +135,10 @@ function App() {
         };
       } catch (error) {
         console.error("Microphone capture failed:", error);
+        if (!cancelled) {
+          setMicError(micErrorMessage(error));
+          setPhase("mic-blocked");
+        }
       }
     })();
 
@@ -129,6 +155,14 @@ function App() {
   };
 
   const handleStop = async () => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+
+    if (phase === "mic-blocked") {
+      await invoke("stop_recording", { transcript: null });
+      return;
+    }
+
     setPhase("transcribing");
     stopCapture();
 
@@ -144,17 +178,19 @@ function App() {
     }
     chunksRef.current = [];
 
+    let transcript: string | null = null;
     try {
-      await invoke("transcribe_recording", {
+      transcript = await invoke<string>("transcribe_recording", {
         samples: Array.from(samples),
         sampleRate: sampleRateRef.current,
       });
     } catch (error) {
       console.error("Transcription failed:", error);
     } finally {
-      await invoke("stop_recording");
+      await invoke("stop_recording", { transcript });
     }
   };
+  handleStopRef.current = handleStop;
 
   return (
     <div className="overlay" onPointerDown={handleDragStart}>
@@ -168,6 +204,10 @@ function App() {
             />
           ))}
         </div>
+      ) : phase === "mic-blocked" ? (
+        <div className="status-label status-label--error" role="alert">
+          {micError}
+        </div>
       ) : (
         <div className="status-label">Transcribing…</div>
       )}
@@ -176,7 +216,7 @@ function App() {
         className="stop-button"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={handleStop}
-        aria-label="Stop recording"
+        aria-label={phase === "mic-blocked" ? "Close" : "Stop recording"}
         disabled={phase === "transcribing"}
       >
         <span className="stop-icon" />

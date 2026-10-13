@@ -30,6 +30,18 @@
         "skipTaskbar": true,
         "visible": false,
         "center": true
+      },
+      {
+        "label": "welcome",
+        "title": "Welcome to Sayso",
+        "url": "index.html?view=welcome",
+        "width": 420,
+        "height": 560,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {

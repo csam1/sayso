@@ -43,13 +43,13 @@ pub async fn transcribe_recording(
     app: AppHandle,
     samples: Vec<f32>,
     sample_rate: u32,
-) -> Result<(), String> {
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         ensure_model_loaded(&app)?;
 
         let resampled = resample_to_16k(&samples, sample_rate);
         if resampled.is_empty() {
-            return Ok(());
+            return Ok(String::new());
         }
 
         let state = app.state::<WhisperState>();
@@ -76,7 +76,9 @@ pub async fn transcribe_recording(
         for i in 0..whisper_state.full_n_segments() {
             if let Some(segment) = whisper_state.get_segment(i) {
                 if let Ok(segment_text) = segment.to_str_lossy() {
-                    text.push_str(&segment_text);
+                    if !is_non_speech_marker(&segment_text) {
+                        text.push_str(&segment_text);
+                    }
                 }
             }
         }
@@ -86,8 +88,36 @@ pub async fn transcribe_recording(
             write_transcript(trimmed)?;
         }
 
-        Ok(())
+        Ok(trimmed.to_string())
     })
     .await
     .map_err(|e| format!("transcription task panicked: {e}"))?
+}
+
+/// Whisper emits markers like `[BLANK_AUDIO]` or `(silence)` as plain text for non-speech audio.
+fn is_non_speech_marker(segment: &str) -> bool {
+    let segment = segment.trim();
+    segment.is_empty()
+        || (segment.starts_with('[') && segment.ends_with(']'))
+        || (segment.starts_with('(') && segment.ends_with(')'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bracketed_and_parenthesised_markers_are_non_speech() {
+        assert!(is_non_speech_marker("[BLANK_AUDIO]"));
+        assert!(is_non_speech_marker(" [ Silence ] "));
+        assert!(is_non_speech_marker("(silence)"));
+        assert!(is_non_speech_marker("  "));
+    }
+
+    #[test]
+    fn spoken_text_is_not_a_marker() {
+        assert!(!is_non_speech_marker(" hello world"));
+        assert!(!is_non_speech_marker(" call me (later) today"));
+        assert!(!is_non_speech_marker("[note] then speech"));
+    }
 }
