@@ -75,7 +75,7 @@ samples ─▶ Rust: resample to 16 kHz ─▶ Whisper (local) ─▶ drop non-s
 - ✅ Global shortcut, draggable overlay, live amplitude bars
 - ✅ Local transcription (offline Whisper) saved to a local history
 - ✅ Pastes into the app that was focused when you started recording (clipboard + ⌘V; needs Accessibility)
-- ⚠️ On recent macOS, re-activating some apps (seen with Chrome) can be refused — the transcript stays on the clipboard
+- ✅ Pastes into Chrome and full-screen apps (VS Code, Terminal). The overlay no longer takes focus away from the app you're typing in
 - ✅ Welcome tour with live permission status
 - ✅ Dashboard: stats, searchable history, save-history setting
 - ⬜ More settings (hotkey, model, language), auto-launch
