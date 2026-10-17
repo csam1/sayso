@@ -1,4 +1,5 @@
 mod audio;
+mod history;
 mod model;
 mod output;
 mod paste;

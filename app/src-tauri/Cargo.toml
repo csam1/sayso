@@ -27,6 +27,7 @@ tauri-plugin-window-state = "2.4.1"
 whisper-rs = "0.16"
 ureq = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-plugin-macos-permissions = "2.3.0"
