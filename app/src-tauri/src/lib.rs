@@ -1,7 +1,10 @@
 mod audio;
+mod history;
 mod model;
-mod output;
 mod paste;
+mod points;
+#[cfg(target_os = "macos")]
+mod spaces;
 mod transcribe;
 mod welcome;
 
@@ -13,6 +16,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
+use history::{HistoryState, HistoryStore};
 use paste::{PasteTarget, StopAction};
 use transcribe::{ensure_model_loaded, transcribe_recording, WhisperState};
 
@@ -29,8 +33,14 @@ fn toggle_overlay(app: &AppHandle) {
         app.emit("stop-requested", ()).ok();
     } else {
         remember_paste_target(app);
-        window.show().ok();
-        window.set_focus().ok();
+        #[cfg(target_os = "macos")]
+        let shown = spaces::show_overlay(app, OVERLAY_LABEL);
+        #[cfg(not(target_os = "macos"))]
+        let shown = false;
+        if !shown {
+            window.show().ok();
+            window.set_focus().ok();
+        }
         app.emit("recording-state-changed", true).ok();
     }
 }
@@ -109,7 +119,9 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     {
-        builder = builder.plugin(tauri_plugin_macos_permissions::init());
+        builder = builder
+            .plugin(tauri_plugin_macos_permissions::init())
+            .plugin(tauri_nspanel::init());
     }
 
     builder
@@ -121,18 +133,28 @@ pub fn run() {
 
             app.global_shortcut().register(toggle_shortcut)?;
 
+            #[cfg(target_os = "macos")]
+            if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
+                if let Err(e) = spaces::make_overlay_panel(&overlay) {
+                    eprintln!("overlay won't show over full-screen apps: {e}");
+                }
+            }
+
+            let dashboard_item =
+                MenuItem::with_id(app, "dashboard", "Open Dashboard", true, None::<&str>)?;
             let toggle_item =
                 MenuItem::with_id(app, "toggle", "Toggle Recording", true, None::<&str>)?;
             let welcome_item =
                 MenuItem::with_id(app, "welcome", "How to use Sayso", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle_item, &welcome_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&dashboard_item, &toggle_item, &welcome_item, &quit_item])?;
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "dashboard" => history::show_dashboard(app),
                     "toggle" => toggle_overlay(app),
                     "welcome" => welcome::show_welcome(app),
                     "quit" => app.exit(0),
@@ -140,11 +162,20 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            match app.path().app_data_dir() {
-                Ok(dir) if welcome::should_show_welcome(&dir) => welcome::show_welcome(app.handle()),
+            let app_data_dir = app.path().app_data_dir();
+            match &app_data_dir {
+                Ok(dir) if welcome::should_show_welcome(dir) => welcome::show_welcome(app.handle()),
                 Ok(_) => {}
                 Err(e) => eprintln!("failed to resolve app data dir: {e}"),
             }
+
+            let history = app_data_dir
+                .map_err(|e| e.to_string())
+                .and_then(|dir| HistoryStore::open(&dir.join("history.db")));
+            if let Err(e) = &history {
+                eprintln!("history disabled: {e}");
+            }
+            app.manage(HistoryState(std::sync::Mutex::new(history.ok())));
 
             #[cfg(target_os = "macos")]
             prime_macos_permissions(app.handle());
@@ -171,7 +202,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             stop_recording,
             transcribe_recording,
-            welcome::welcome_done
+            welcome::welcome_done,
+            welcome::open_welcome,
+            history::history_list,
+            history::history_delete,
+            history::history_clear,
+            history::history_stats,
+            history::get_save_history,
+            history::set_save_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
