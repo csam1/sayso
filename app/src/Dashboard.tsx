@@ -22,6 +22,8 @@ type Stats = {
 type Section = "home" | "history" | "settings";
 
 const PAGE_SIZE = 50;
+// The webview's window.confirm() returns false without showing a dialog, so Clear all asks twice.
+const CLEAR_CONFIRM_MS = 3000;
 const SEARCH_DEBOUNCE_MS = 250;
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -128,12 +130,29 @@ type HistoryProps = {
 };
 
 function History({ entries, query, hasMore, onQuery, onLoadMore, onDelete, onClear }: HistoryProps) {
+  const [confirmingClear, setConfirmingClear] = useState(false);
+
+  useEffect(() => {
+    if (!confirmingClear) return;
+    const timer = setTimeout(() => setConfirmingClear(false), CLEAR_CONFIRM_MS);
+    return () => clearTimeout(timer);
+  }, [confirmingClear]);
+
+  const clear = () => {
+    if (confirmingClear) {
+      setConfirmingClear(false);
+      onClear();
+    } else {
+      setConfirmingClear(true);
+    }
+  };
+
   return (
     <>
       <div className="section-header">
         <h1>History</h1>
-        <button type="button" className="danger" onClick={onClear} disabled={entries.length === 0 && !query}>
-          Clear all
+        <button type="button" className="danger" onClick={clear} disabled={entries.length === 0 && !query}>
+          {confirmingClear ? "Click again to delete everything" : "Clear all"}
         </button>
       </div>
       <input
@@ -261,9 +280,7 @@ function Dashboard() {
   }, [refresh, loaded]);
 
   const deleteEntry = (id: number) => run(() => invoke("history_delete", { id }));
-  const clearAll = () => {
-    if (confirm("Delete all history? This can't be undone.")) run(() => invoke("history_clear"));
-  };
+  const clearAll = () => run(() => invoke("history_clear"));
   const toggleSave = (enabled: boolean) =>
     run(async () => {
       await invoke("set_save_history", { enabled });
