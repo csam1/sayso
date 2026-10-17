@@ -6,6 +6,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use crate::audio::resample_to_16k;
 use crate::model::{download_model_if_missing, model_path};
 use crate::output::write_transcript;
+use crate::points::{find_pauses, format_transcript, split_at_pauses, Word};
 
 pub struct WhisperState(pub Mutex<Option<WhisperContext>>);
 
@@ -67,28 +68,57 @@ pub async fn transcribe_recording(
         params.set_print_progress(false);
         params.set_print_special(false);
         params.set_print_realtime(false);
+        params.set_token_timestamps(true);
 
         whisper_state
             .full(params, &resampled)
             .map_err(|e| format!("transcription failed: {e}"))?;
 
+        let first_special_token = context.token_eot();
         let mut text = String::new();
+        let mut words: Vec<Word> = Vec::new();
         for i in 0..whisper_state.full_n_segments() {
-            if let Some(segment) = whisper_state.get_segment(i) {
-                if let Ok(segment_text) = segment.to_str_lossy() {
-                    if !is_non_speech_marker(&segment_text) {
-                        text.push_str(&segment_text);
+            let Some(segment) = whisper_state.get_segment(i) else {
+                continue;
+            };
+            let Ok(segment_text) = segment.to_str_lossy() else {
+                continue;
+            };
+            if is_non_speech_marker(&segment_text) {
+                continue;
+            }
+            text.push_str(&segment_text);
+
+            for t in 0..segment.n_tokens() {
+                let Some(token) = segment.get_token(t) else {
+                    continue;
+                };
+                if token.token_id() >= first_special_token {
+                    continue;
+                }
+                let Ok(piece) = token.to_str_lossy() else {
+                    continue;
+                };
+                let data = token.token_data();
+                // Sub-word pieces without a leading space continue the previous word.
+                match words.last_mut() {
+                    Some(word) if !piece.starts_with(' ') => {
+                        word.text.push_str(&piece);
+                        word.end = data.t1;
                     }
+                    _ => words.push(Word { text: piece.into_owned(), start: data.t0, end: data.t1 }),
                 }
             }
         }
 
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
-            write_transcript(trimmed)?;
+        let plain = text.trim();
+        let chunks = split_at_pauses(&words, &find_pauses(&resampled));
+        let formatted = format_transcript(plain, &chunks);
+        if !formatted.is_empty() {
+            write_transcript(&formatted)?;
         }
 
-        Ok(trimmed.to_string())
+        Ok(formatted)
     })
     .await
     .map_err(|e| format!("transcription task panicked: {e}"))?

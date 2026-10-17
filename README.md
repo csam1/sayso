@@ -9,6 +9,12 @@ A macOS-only voice-to-text app. Press a global shortcut, speak, and your words a
 3. **Press ⌘⇧Space again** (or click ■). Your speech is transcribed on this Mac — no audio leaves your machine.
 4. **It's pasted where your cursor was.** It's also left on your clipboard, so ⌘V works if the paste didn't land. Every transcript is saved to `output/transcripts/` as well.
 
+**Bullet points:** start with a cue such as "points", "bullet points" or "list", then pause between items (or say "next point"):
+
+> *"Points … buy milk … call the bank … renew passport"* → `- Buy milk` / `- Call the bank` / `- Renew passport`
+
+The cue has to stand on its own (followed by a pause or punctuation), so "list the files in this folder" stays plain text. Without a cue, nothing changes.
+
 **First run:** a welcome window walks through these steps and shows whether **Microphone** and **Accessibility** are granted, with a Grant button for each. Reopen it any time from the menu-bar icon → **How to use Sayso**.
 
 The Whisper model (`ggml-base.en.bin`, ~140MB) downloads automatically into the app's data directory the first time you record; after that everything works offline.
@@ -29,7 +35,7 @@ The Whisper model (`ggml-base.en.bin`, ~140MB) downloads automatically into the 
 ⌘⇧Space / ■ ◀─────────────────────────────────────────────┘
     │
     ▼
-samples ─▶ Rust: resample to 16 kHz ─▶ Whisper (local) ─▶ drop non-speech markers
+samples ─▶ Rust: resample to 16 kHz ─▶ Whisper (local) ─▶ drop non-speech markers ─▶ bullets if cued
     │
     ├─▶ save output/transcripts/<timestamp>.txt
     └─▶ clipboard ─▶ re-activate remembered app ─▶ wait until frontmost ─▶ ⌘V
@@ -47,6 +53,7 @@ samples ─▶ Rust: resample to 16 kHz ─▶ Whisper (local) ─▶ drop non-s
 | `app/src-tauri/src/lib.rs` | Global shortcut, tray menu, window wiring, `stop_recording` |
 | `app/src-tauri/src/audio.rs` | Resampling to 16 kHz |
 | `app/src-tauri/src/transcribe.rs` | Whisper transcription, non-speech filtering |
+| `app/src-tauri/src/points.rs` | Pause detection and bullet-point formatting for spoken lists |
 | `app/src-tauri/src/model.rs` | Model download and location |
 | `app/src-tauri/src/paste.rs` | Remembered target app, clipboard, activation, ⌘V |
 | `app/src-tauri/src/welcome.rs` | First-launch detection, welcome window |

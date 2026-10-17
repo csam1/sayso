@@ -2,6 +2,7 @@ mod audio;
 mod model;
 mod output;
 mod paste;
+mod points;
 mod transcribe;
 mod welcome;
 
