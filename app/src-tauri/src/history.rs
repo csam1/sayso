@@ -6,6 +6,11 @@ use std::sync::Mutex;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+const DASHBOARD_LABEL: &str = "dashboard";
+/// Emitted whenever entries are added or removed, so an open dashboard refreshes.
+pub const HISTORY_CHANGED: &str = "history-changed";
 
 /// Settings key; `"false"` turns history off, anything else (or unset) keeps it on.
 pub const SAVE_HISTORY: &str = "save_history";
@@ -172,11 +177,70 @@ pub fn record(
     duration_ms: i64,
     app_name: Option<String>,
 ) -> Result<bool, String> {
-    if text.trim().is_empty() || store.get_setting(SAVE_HISTORY)?.as_deref() == Some("false") {
+    if text.trim().is_empty() || !save_history_enabled(store)? {
         return Ok(false);
     }
     store.insert(&NewEntry { text: text.to_string(), created_at, duration_ms, app_name })?;
     Ok(true)
+}
+
+pub fn save_history_enabled(store: &HistoryStore) -> Result<bool, String> {
+    Ok(store.get_setting(SAVE_HISTORY)?.as_deref() != Some("false"))
+}
+
+/// Runs `f` against the open store, or fails with a message the dashboard can show.
+pub fn with_store<T>(
+    state: &HistoryState,
+    f: impl FnOnce(&HistoryStore) -> Result<T, String>,
+) -> Result<T, String> {
+    let guard = state.0.lock().unwrap();
+    f(guard.as_ref().ok_or("History is unavailable")?)
+}
+
+pub fn show_dashboard(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(DASHBOARD_LABEL) {
+        window.show().ok();
+        window.set_focus().ok();
+    }
+}
+
+#[tauri::command]
+pub fn history_list(
+    state: State<HistoryState>,
+    query: String,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Entry>, String> {
+    with_store(&state, |s| s.list(&query, limit, offset))
+}
+
+#[tauri::command]
+pub fn history_delete(app: AppHandle, state: State<HistoryState>, id: i64) -> Result<(), String> {
+    with_store(&state, |s| s.delete(id))?;
+    app.emit(HISTORY_CHANGED, ()).ok();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn history_clear(app: AppHandle, state: State<HistoryState>) -> Result<(), String> {
+    with_store(&state, |s| s.clear())?;
+    app.emit(HISTORY_CHANGED, ()).ok();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn history_stats(state: State<HistoryState>) -> Result<Stats, String> {
+    with_store(&state, |s| s.stats(chrono::Utc::now().timestamp_millis()))
+}
+
+#[tauri::command]
+pub fn get_save_history(state: State<HistoryState>) -> Result<bool, String> {
+    with_store(&state, save_history_enabled)
+}
+
+#[tauri::command]
+pub fn set_save_history(state: State<HistoryState>, enabled: bool) -> Result<(), String> {
+    with_store(&state, |s| s.set_setting(SAVE_HISTORY, if enabled { "true" } else { "false" }))
 }
 
 /// Words separated by whitespace, not counting the `-` that starts a bullet.
@@ -365,6 +429,27 @@ mod tests {
         let all = s.list("", 10, 0).unwrap();
         assert_eq!(texts(&all), ["second", "first"]);
         assert_eq!((all[1].duration_ms, all[1].app_name.as_deref()), (2_500, Some("Slack")));
+    }
+
+    #[test]
+    fn with_store_reports_unavailable_history() {
+        let state = HistoryState(Mutex::new(None));
+        assert_eq!(with_store(&state, |s| s.stats(0)).err().as_deref(), Some("History is unavailable"));
+    }
+
+    #[test]
+    fn with_store_runs_against_the_open_store() {
+        let state = HistoryState(Mutex::new(Some(HistoryStore::open_in_memory().unwrap())));
+        with_store(&state, |s| s.insert(&entry("hi", 1))).unwrap();
+        assert_eq!(with_store(&state, |s| s.stats(0)).unwrap().total_entries, 1);
+    }
+
+    #[test]
+    fn save_history_defaults_on_and_reads_back() {
+        let s = HistoryStore::open_in_memory().unwrap();
+        assert!(save_history_enabled(&s).unwrap());
+        s.set_setting(SAVE_HISTORY, "false").unwrap();
+        assert!(!save_history_enabled(&s).unwrap());
     }
 
     #[test]

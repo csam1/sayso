@@ -123,18 +123,21 @@ pub fn run() {
 
             app.global_shortcut().register(toggle_shortcut)?;
 
+            let dashboard_item =
+                MenuItem::with_id(app, "dashboard", "Open Dashboard", true, None::<&str>)?;
             let toggle_item =
                 MenuItem::with_id(app, "toggle", "Toggle Recording", true, None::<&str>)?;
             let welcome_item =
                 MenuItem::with_id(app, "welcome", "How to use Sayso", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&toggle_item, &welcome_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&dashboard_item, &toggle_item, &welcome_item, &quit_item])?;
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "dashboard" => history::show_dashboard(app),
                     "toggle" => toggle_overlay(app),
                     "welcome" => welcome::show_welcome(app),
                     "quit" => app.exit(0),
@@ -182,7 +185,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             stop_recording,
             transcribe_recording,
-            welcome::welcome_done
+            welcome::welcome_done,
+            welcome::open_welcome,
+            history::history_list,
+            history::history_delete,
+            history::history_clear,
+            history::history_stats,
+            history::get_save_history,
+            history::set_save_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

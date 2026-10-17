@@ -5,7 +5,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 
 use crate::audio::resample_to_16k;
 use crate::model::{download_model_if_missing, model_path};
-use crate::history::{record, HistoryState};
+use crate::history::{record, HistoryState, HISTORY_CHANGED};
 use crate::paste::{app_name, PasteTarget};
 use crate::points::{find_pauses, format_transcript, split_at_pauses, Word};
 
@@ -140,7 +140,7 @@ fn save_to_history(app: &AppHandle, text: &str, duration_ms: i64) {
     };
     match record(store, text, chrono::Utc::now().timestamp_millis(), duration_ms, app_name) {
         Ok(true) => {
-            app.emit("history-changed", ()).ok();
+            app.emit(HISTORY_CHANGED, ()).ok();
         }
         Ok(false) => {}
         Err(e) => eprintln!("{e}"),

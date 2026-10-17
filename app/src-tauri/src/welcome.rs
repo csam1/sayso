@@ -26,6 +26,11 @@ pub fn show_welcome(app: &AppHandle) {
 }
 
 #[tauri::command]
+pub fn open_welcome(app: AppHandle) {
+    show_welcome(&app);
+}
+
+#[tauri::command]
 pub fn welcome_done(app: AppHandle) {
     match app.path().app_data_dir() {
         Ok(dir) => {
