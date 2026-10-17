@@ -2,6 +2,10 @@
 
 A macOS-only voice-to-text app. Press a global shortcut, speak, and your words are typed into whatever app you were using — transcribed locally, no cloud, no account.
 
+![Sayso: press ⌘⇧Space, speak, and the text is pasted where you were typing](docs/demo.gif)
+
+<sub>Illustration of the flow.</sub>
+
 ## Tour
 
 1. **Click into any text field** — Terminal, Notes, Slack, a browser address bar.
