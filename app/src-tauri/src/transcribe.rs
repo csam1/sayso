@@ -1,11 +1,12 @@
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 use crate::audio::resample_to_16k;
 use crate::model::{download_model_if_missing, model_path};
-use crate::output::write_transcript;
+use crate::history::{record, HistoryState};
+use crate::paste::{app_name, PasteTarget};
 use crate::points::{find_pauses, format_transcript, split_at_pauses, Word};
 
 pub struct WhisperState(pub Mutex<Option<WhisperContext>>);
@@ -48,6 +49,10 @@ pub async fn transcribe_recording(
     tauri::async_runtime::spawn_blocking(move || {
         ensure_model_loaded(&app)?;
 
+        let duration_ms = match sample_rate {
+            0 => 0,
+            rate => (samples.len() as u64 * 1000 / rate as u64) as i64,
+        };
         let resampled = resample_to_16k(&samples, sample_rate);
         if resampled.is_empty() {
             return Ok(String::new());
@@ -114,14 +119,32 @@ pub async fn transcribe_recording(
         let plain = text.trim();
         let chunks = split_at_pauses(&words, &find_pauses(&resampled));
         let formatted = format_transcript(plain, &chunks);
-        if !formatted.is_empty() {
-            write_transcript(&formatted)?;
-        }
+        save_to_history(&app, &formatted, duration_ms);
 
         Ok(formatted)
     })
     .await
     .map_err(|e| format!("transcription task panicked: {e}"))?
+}
+
+/// Best effort: a history failure is logged and never stops the transcript from being pasted.
+fn save_to_history(app: &AppHandle, text: &str, duration_ms: i64) {
+    // Peek, don't take: `stop_recording` still needs the target to paste into.
+    let target = *app.state::<PasteTarget>().0.lock().unwrap();
+    let app_name = target.and_then(app_name);
+
+    let state = app.state::<HistoryState>();
+    let guard = state.0.lock().unwrap();
+    let Some(store) = guard.as_ref() else {
+        return;
+    };
+    match record(store, text, chrono::Utc::now().timestamp_millis(), duration_ms, app_name) {
+        Ok(true) => {
+            app.emit("history-changed", ()).ok();
+        }
+        Ok(false) => {}
+        Err(e) => eprintln!("{e}"),
+    }
 }
 
 /// Whisper emits markers like `[BLANK_AUDIO]` or `(silence)` as plain text for non-speech audio.

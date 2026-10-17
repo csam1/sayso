@@ -1,7 +1,6 @@
 mod audio;
 mod history;
 mod model;
-mod output;
 mod paste;
 mod points;
 mod transcribe;
@@ -15,6 +14,7 @@ use tauri::{
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
+use history::{HistoryState, HistoryStore};
 use paste::{PasteTarget, StopAction};
 use transcribe::{ensure_model_loaded, transcribe_recording, WhisperState};
 
@@ -142,11 +142,20 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            match app.path().app_data_dir() {
-                Ok(dir) if welcome::should_show_welcome(&dir) => welcome::show_welcome(app.handle()),
+            let app_data_dir = app.path().app_data_dir();
+            match &app_data_dir {
+                Ok(dir) if welcome::should_show_welcome(dir) => welcome::show_welcome(app.handle()),
                 Ok(_) => {}
                 Err(e) => eprintln!("failed to resolve app data dir: {e}"),
             }
+
+            let history = app_data_dir
+                .map_err(|e| e.to_string())
+                .and_then(|dir| HistoryStore::open(&dir.join("history.db")));
+            if let Err(e) = &history {
+                eprintln!("history disabled: {e}");
+            }
+            app.manage(HistoryState(std::sync::Mutex::new(history.ok())));
 
             #[cfg(target_os = "macos")]
             prime_macos_permissions(app.handle());

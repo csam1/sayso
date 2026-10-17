@@ -67,6 +67,12 @@ mod macos {
         wait_until_frontmost(pid)
     }
 
+    /// The app's display name, e.g. "Notes".
+    pub fn app_name(pid: i32) -> Option<String> {
+        let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?;
+        Some(app.localizedName()?.to_string())
+    }
+
     fn set_clipboard(text: &str) -> Result<(), String> {
         let pasteboard = NSPasteboard::generalPasteboard();
         pasteboard.clearContents();
@@ -104,7 +110,12 @@ mod macos {
 }
 
 #[cfg(target_os = "macos")]
-pub use macos::{activate_app, frontmost_app_pid, paste_into};
+pub use macos::{activate_app, app_name, frontmost_app_pid, paste_into};
+
+#[cfg(not(target_os = "macos"))]
+pub fn app_name(_pid: i32) -> Option<String> {
+    None
+}
 
 #[cfg(test)]
 mod tests {
@@ -164,6 +175,17 @@ mod macos_tests {
     fn frontmost_app_pid_is_positive() {
         let pid = frontmost_app_pid().expect("some app should be frontmost");
         assert!(pid > 0);
+    }
+
+    #[test]
+    fn frontmost_app_has_a_name() {
+        let pid = frontmost_app_pid().expect("some app should be frontmost");
+        assert!(app_name(pid).is_some_and(|name| !name.is_empty()));
+    }
+
+    #[test]
+    fn unknown_pid_has_no_name() {
+        assert_eq!(app_name(-1), None);
     }
 
     #[test]

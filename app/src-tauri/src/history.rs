@@ -2,10 +2,13 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
+/// Settings key; `"false"` turns history off, anything else (or unset) keeps it on.
+pub const SAVE_HISTORY: &str = "save_history";
 const WEEK_MS: i64 = 7 * 86_400_000;
 /// Typing speed used for "minutes saved".
 const TYPING_WPM: f64 = 40.0;
@@ -62,6 +65,7 @@ impl HistoryStore {
         Self::with_schema(conn)
     }
 
+    #[cfg(test)]
     pub fn open_in_memory() -> Result<Self, String> {
         let conn = Connection::open_in_memory().map_err(|e| format!("failed to open history: {e}"))?;
         Self::with_schema(conn)
@@ -154,6 +158,25 @@ impl HistoryStore {
             .map(|_| ())
             .map_err(|e| format!("failed to save setting: {e}"))
     }
+}
+
+/// The store, or `None` when the database couldn't be opened (dictation keeps working without it).
+pub struct HistoryState(pub Mutex<Option<HistoryStore>>);
+
+/// Saves a finished dictation. Returns `Ok(false)` without writing when the text is blank
+/// or the user turned history off.
+pub fn record(
+    store: &HistoryStore,
+    text: &str,
+    created_at: i64,
+    duration_ms: i64,
+    app_name: Option<String>,
+) -> Result<bool, String> {
+    if text.trim().is_empty() || store.get_setting(SAVE_HISTORY)?.as_deref() == Some("false") {
+        return Ok(false);
+    }
+    store.insert(&NewEntry { text: text.to_string(), created_at, duration_ms, app_name })?;
+    Ok(true)
 }
 
 /// Words separated by whitespace, not counting the `-` that starts a bullet.
@@ -315,6 +338,33 @@ mod tests {
         let s = HistoryStore::open(&path).unwrap();
         assert_eq!(texts(&s.list("", 50, 0).unwrap()), ["kept"]);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn record_skips_blank_text() {
+        let s = HistoryStore::open_in_memory().unwrap();
+        assert!(!record(&s, "  \n", 1, 1, None).unwrap());
+        assert!(s.list("", 10, 0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn record_respects_save_history_off_and_keeps_old_entries() {
+        let s = HistoryStore::open_in_memory().unwrap();
+        record(&s, "kept", 1, 1, None).unwrap();
+        s.set_setting(SAVE_HISTORY, "false").unwrap();
+        assert!(!record(&s, "dropped", 2, 1, None).unwrap());
+        assert_eq!(texts(&s.list("", 10, 0).unwrap()), ["kept"]);
+    }
+
+    #[test]
+    fn record_stores_when_setting_missing_or_true() {
+        let s = HistoryStore::open_in_memory().unwrap();
+        assert!(record(&s, "first", 1, 2_500, Some("Slack".into())).unwrap());
+        s.set_setting(SAVE_HISTORY, "true").unwrap();
+        assert!(record(&s, "second", 2, 1, None).unwrap());
+        let all = s.list("", 10, 0).unwrap();
+        assert_eq!(texts(&all), ["second", "first"]);
+        assert_eq!((all[1].duration_ms, all[1].app_name.as_deref()), (2_500, Some("Slack")));
     }
 
     #[test]
