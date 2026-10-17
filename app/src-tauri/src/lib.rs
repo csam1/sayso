@@ -3,6 +3,8 @@ mod history;
 mod model;
 mod paste;
 mod points;
+#[cfg(target_os = "macos")]
+mod spaces;
 mod transcribe;
 mod welcome;
 
@@ -31,8 +33,14 @@ fn toggle_overlay(app: &AppHandle) {
         app.emit("stop-requested", ()).ok();
     } else {
         remember_paste_target(app);
-        window.show().ok();
-        window.set_focus().ok();
+        #[cfg(target_os = "macos")]
+        let shown = spaces::show_overlay(app, OVERLAY_LABEL);
+        #[cfg(not(target_os = "macos"))]
+        let shown = false;
+        if !shown {
+            window.show().ok();
+            window.set_focus().ok();
+        }
         app.emit("recording-state-changed", true).ok();
     }
 }
@@ -111,7 +119,9 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     {
-        builder = builder.plugin(tauri_plugin_macos_permissions::init());
+        builder = builder
+            .plugin(tauri_plugin_macos_permissions::init())
+            .plugin(tauri_nspanel::init());
     }
 
     builder
@@ -122,6 +132,13 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             app.global_shortcut().register(toggle_shortcut)?;
+
+            #[cfg(target_os = "macos")]
+            if let Some(overlay) = app.get_webview_window(OVERLAY_LABEL) {
+                if let Err(e) = spaces::make_overlay_panel(&overlay) {
+                    eprintln!("overlay won't show over full-screen apps: {e}");
+                }
+            }
 
             let dashboard_item =
                 MenuItem::with_id(app, "dashboard", "Open Dashboard", true, None::<&str>)?;
